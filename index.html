@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Candlestick Chart</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d0d;
+    color: #c9d1d9;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #toolbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    background: #111;
+    border-bottom: 1px solid #222;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+
+  #searchWrap { display: contents; }
+
+  #pairInput {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 13px;
+    width: 120px;
+    text-transform: uppercase;
+    outline: none;
+  }
+  #pairInput:focus { border-color: #555; }
+
+  #dropdown {
+    display: none;
+    position: fixed;
+    min-width: 160px;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 9999;
+    scrollbar-width: thin;
+    scrollbar-color: #333 #1a1a1a;
+  }
+  .dd-item {
+    padding: 5px 10px;
+    font-size: 12px;
+    color: #bbb;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .dd-item:hover, .dd-item.hi { background: #2a2a2a; color: #e0e0e0; }
+
+  button {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #aaa;
+    padding: 4px 11px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: #555; color: #ddd; }
+  button.active { border-color: #26a69a; color: #26a69a; background: #0d1f1e; }
+  #loadBtn { color: #ccc; border-color: #444; }
+
+  #statsBar {
+    flex-shrink: 0;
+    display: flex;
+    gap: 20px;
+    padding: 5px 10px;
+    background: #111;
+    border-bottom: 1px solid #1a1a1a;
+    white-space: nowrap;
+    overflow-x: auto;
+    align-items: baseline;
+  }
+  .stat-label { color: #888; font-size: 11px; margin-right: 5px; }
+  #currentPrice { font-size: 17px; font-weight: bold; color: #e0e0e0; }
+  #change24h, #high24h, #low24h, #pairLabel { font-size: 13px; }
+  .pos { color: #26a69a; }
+  .neg { color: #ef5350; }
+
+  #chartWrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .panel {
+    position: relative;
+    min-height: 0;
+  }
+  #pricePanel  { flex: 6; }
+  #volumePanel { flex: 2; }
+  #rsiPanel    { flex: 2; }
+  #macdPanel   { flex: 2; }
+
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  .xhair {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+    pointer-events: none;
+  }
+
+  .panel-label {
+    position: absolute;
+    top: 4px; left: 8px;
+    font-size: 10px;
+    color: #888;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  #status {
+    flex-shrink: 0;
+    padding: 3px 10px;
+    font-size: 11px;
+    color: #444;
+    background: #0d0d0d;
+    border-top: 1px solid #1a1a1a;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div id="searchWrap">
+    <input id="pairInput" type="text" value="SUIBTC" spellcheck="false" autocomplete="off" />
+  </div>
+  <button id="loadBtn" onclick="loadPair()">GO</button>
+  <button onclick="setTf('5m')"  id="tf-5m">5m</button>
+  <button onclick="setTf('15m')" id="tf-15m">15m</button>
+  <button onclick="setTf('1h')"  id="tf-1h" class="active">1h</button>
+  <button onclick="setTf('4h')"  id="tf-4h">4h</button>
+  <button onclick="setTf('1d')"  id="tf-1d">1D</button>
+</div>
+
+<div id="statsBar">
+  <span><span class="stat-label">PRICE</span><span id="currentPrice">—</span></span>
+  <span><span class="stat-label">24H</span><span id="change24h">—</span></span>
+  <span><span class="stat-label">HIGH</span><span id="high24h">—</span></span>
+  <span><span class="stat-label">LOW</span><span id="low24h">—</span></span>
+  <span><span class="stat-label">PAIR</span><span id="pairLabel">—</span></span>
+</div>
+
+<div id="chartWrap">
+  <div class="panel" id="pricePanel">
+    <canvas id="priceCanvas"></canvas>
+    <canvas id="xhairPrice" class="xhair"></canvas>
+    <div class="panel-label">PRICE</div>
+  </div>
+  <div class="panel" id="volumePanel">
+    <canvas id="volCanvas"></canvas>
+    <canvas id="xhairVol" class="xhair"></canvas>
+    <div class="panel-label">VOLUME</div>
+  </div>
+  <div class="panel" id="rsiPanel">
+    <canvas id="rsiCanvas"></canvas>
+    <canvas id="xhairRsi" class="xhair"></canvas>
+    <div class="panel-label">RSI(14)</div>
+  </div>
+  <div class="panel" id="macdPanel">
+    <canvas id="macdCanvas"></canvas>
+    <canvas id="xhairMacd" class="xhair"></canvas>
+    <div class="panel-label">MACD(12,26,9)</div>
+  </div>
+</div>
+
+<div id="dropdown"></div>
+<div id="status">loading...</div>
+
+<script>
+const API        = 'https://api.binance.com/api/v3';
+const LIMIT      = 200;
+const REFRESH_MS = 30000;
+const PAD        = { left: 62, right: 70, top: 8, bottom: 20 };
+const GREEN      = '#26a69a';
+const RED        = '#ef5350';
+
+let candles      = [];
+let currentTf    = '1h';
+let currentPair  = 'SUIBTC';
+let timer        = null;
+let countdownTimer = null;
+let refreshAt    = null;
+
+const pairInput = document.getElementById('pairInput');
+const statusEl  = document.getElementById('status');
+const priceCvs  = document.getElementById('priceCanvas');
+const volCvs    = document.getElementById('volCanvas');
+const rsiCvs    = document.getElementById('rsiCanvas');
+const macdCvs   = document.getElementById('macdCanvas');
+
+// ── Public actions called from HTML ─────────────────────────────
+
+function loadPair() {
+  const val = pairInput.value.trim().toUpperCase();
+  if (!val) return;
+  currentPair = val;
+  pairInput.value = val;
+  fetchAndDraw();
+}
+
+function setTf(tf) {
+  currentTf = tf;
+  ['5m','15m','1h','4h','1d'].forEach(t => {
+    document.getElementById('tf-' + t).classList.toggle('active', t === tf);
+  });
+  fetchAndDraw();
+}
+
+// ── Data fetching ────────────────────────────────────────────────
+
+async function apiFetch(url) {
+  let r;
+  try {
+    r = await fetch(url);
+  } catch (e) {
+    throw new Error('Network error — ' + e.message);
+  }
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.msg || 'HTTP ' + r.status);
+  }
+  return r.json();
+}
+
+function startCountdown(updatedAt) {
+  clearInterval(countdownTimer);
+  refreshAt = Date.now() + REFRESH_MS;
+  countdownTimer = setInterval(() => {
+    const secs = Math.max(0, Math.round((refreshAt - Date.now()) / 1000));
+    statusEl.textContent = 'updated ' + updatedAt + ' · refresh in ' + secs + 's';
+  }, 1000);
+}
+
+async function fetchAndDraw() {
+  clearInterval(timer);
+  clearInterval(countdownTimer);
+  statusEl.textContent = 'loading ' + currentPair + ' ' + currentTf + '...';
+  try {
+    const [klines, tick] = await Promise.all([
+      apiFetch(`${API}/klines?symbol=${currentPair}&interval=${currentTf}&limit=${LIMIT}`),
+      apiFetch(`${API}/ticker/24hr?symbol=${currentPair}`).catch(() => null),
+    ]);
+    candles = klines.map(k => ({
+      t: k[0],
+      o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5],
+    }));
+    updateStats(tick);
+    drawAll();
+    const updatedAt = new Date().toLocaleTimeString();
+    statusEl.textContent = 'updated ' + updatedAt + ' · refresh in 30s';
+    startCountdown(updatedAt);
+  } catch (e) {
+    statusEl.textContent = 'error: ' + e.message;
+  }
+  timer = setInterval(fetchAndDraw, REFRESH_MS);
+}
+
+// ── Stats bar ────────────────────────────────────────────────────
+
+function updateStats(tick) {
+  const last = candles[candles.length - 1];
+  document.getElementById('currentPrice').textContent = fmt(last.c);
+  document.getElementById('pairLabel').textContent    = currentPair;
+  if (tick) {
+    const chg = parseFloat(tick.priceChangePercent);
+    const el  = document.getElementById('change24h');
+    el.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+    el.className   = chg >= 0 ? 'pos' : 'neg';
+    document.getElementById('high24h').textContent = fmt(+tick.highPrice);
+    document.getElementById('low24h').textContent  = fmt(+tick.lowPrice);
+  }
+}
+
+// ── Formatting ───────────────────────────────────────────────────
+
+function fmt(v) {
+  if (!isFinite(v)) return '—';
+  if (v < 0.0001)  return v.toFixed(8);
+  if (v < 0.01)    return v.toFixed(6);
+  if (v < 1)       return v.toFixed(4);
+  if (v < 10000)   return v.toFixed(4);
+  return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtVol(v) {
+  if (v >= 1e9) return (v/1e9).toFixed(1)+'B';
+  if (v >= 1e6) return (v/1e6).toFixed(1)+'M';
+  if (v >= 1e3) return (v/1e3).toFixed(1)+'K';
+  return v.toFixed(0);
+}
+
+// ── Canvas helpers ───────────────────────────────────────────────
+
+function prepCanvas(cvs) {
+  const r = window.devicePixelRatio || 1;
+  const w = cvs.parentElement.clientWidth;
+  const h = cvs.parentElement.clientHeight;
+  cvs.width  = w * r;
+  cvs.height = h * r;
+  const ctx = cvs.getContext('2d');
+  ctx.setTransform(r, 0, 0, r, 0, 0);
+  return { ctx, w, h };
+}
+
+function hline(ctx, y, x0, x1, color, dash) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1;
+  if (dash) ctx.setLineDash(dash); else ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x0, Math.round(y) + 0.5);
+  ctx.lineTo(x1, Math.round(y) + 0.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── Price chart ──────────────────────────────────────────────────
+
+function drawPrice() {
+  const { ctx, w, h } = prepCanvas(priceCvs);
+  ctx.clearRect(0, 0, w, h);
+  if (!candles.length) return;
+
+  const dw = w - PAD.left - PAD.right;
+  const dh = h - PAD.top  - PAD.bottom;
+  const maxP = Math.max(...candles.map(c => c.h));
+  const minP = Math.min(...candles.map(c => c.l));
+  const rng  = maxP - minP || 1;
+  const sy   = v => PAD.top + dh - ((v - minP) / rng * dh);
+
+  const n  = candles.length;
+  const cw = dw / n;
+  const bw = Math.max(1, cw * 0.6);
+
+  // grid
+  for (let i = 0; i <= 5; i++) {
+    const v = minP + rng * i / 5;
+    const y = sy(v);
+    hline(ctx, y, PAD.left, w - PAD.right, '#333');
+    ctx.fillStyle = '#bbb';
+    ctx.font = '10px Courier New';
+    ctx.fillText(fmt(v), w - PAD.right + 4, y + 3);
+  }
+
+  // candles
+  candles.forEach((c, i) => {
+    const x     = PAD.left + (i + 0.5) * cw;
+    const bull  = c.c >= c.o;
+    const color = bull ? GREEN : RED;
+    ctx.strokeStyle = color;
+    ctx.fillStyle   = color;
+    ctx.lineWidth   = 1;
+    // wick
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x) + 0.5, sy(c.h));
+    ctx.lineTo(Math.round(x) + 0.5, sy(c.l));
+    ctx.stroke();
+    // body
+    const y0 = sy(Math.max(c.o, c.c));
+    const y1 = sy(Math.min(c.o, c.c));
+    ctx.fillRect(Math.round(x - bw/2), y0, Math.round(bw), Math.max(1, y1 - y0));
+  });
+
+  // EMA overlays
+  [[20, '#4fc3f7'], [50, '#ffb74d']].forEach(([period, color]) => {
+    const ema = calcEMA(candles.map(c => c.c), period);
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    let started = false;
+    ema.forEach((v, i) => {
+      if (v === null) return;
+      const x = PAD.left + (i + 0.5) * cw;
+      const y = sy(v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    // label at right edge
+    const lastVal = ema[ema.length - 1];
+    if (lastVal !== null) {
+      ctx.fillStyle = color;
+      ctx.font      = 'bold 10px Courier New';
+      ctx.fillText('EMA' + period, w - PAD.right + 4, sy(lastVal) + 3);
+    }
+  });
+
+  // x-axis time labels
+  ctx.fillStyle = '#bbb';
+  ctx.font = '10px Courier New';
+  const step = Math.max(1, Math.floor(n / 7));
+  candles.forEach((c, i) => {
+    if (i % step !== 0) return;
+    const x = PAD.left + (i + 0.5) * cw;
+    const d = new Date(c.t);
+    const lbl = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    ctx.fillText(lbl, x - 12, h - 5);
+  });
+
+  // current price line
+  const last      = candles[candles.length - 1];
+  const lineColor = last.c >= last.o ? GREEN : RED;
+  const ly        = sy(last.c);
+  ctx.save();
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, ly + 0.5);
+  ctx.lineTo(w - PAD.right, ly + 0.5);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // price label badge on right axis
+  const lblTxt = fmt(last.c);
+  const lblW   = 66;
+  const lblH   = 14;
+  const lx     = w - PAD.right + 2;
+  ctx.fillStyle = lineColor;
+  ctx.fillRect(lx, ly - lblH / 2, lblW, lblH);
+  ctx.fillStyle = '#000';
+  ctx.font      = 'bold 10px Courier New';
+  ctx.fillText(lblTxt, lx + 3, ly + 4);
+  ctx.restore();
+}
+
+// ── Volume chart ─────────────────────────────────────────────────
+
+function drawVolume() {
+  const { ctx, w, h } = prepCanvas(volCvs);
+  ctx.clearRect(0, 0, w, h);
+  if (!candles.length) return;
+
+  const dw   = w - PAD.left - PAD.right;
+  const dh   = h - PAD.top  - PAD.bottom;
+  const maxV = Math.max(...candles.map(c => c.v)) || 1;
+  const n    = candles.length;
+  const cw   = dw / n;
+  const bw   = Math.max(1, cw * 0.6);
+
+  hline(ctx, PAD.top,      PAD.left, w - PAD.right, '#333');
+  hline(ctx, PAD.top + dh/2, PAD.left, w - PAD.right, '#333');
+
+  ctx.fillStyle = '#bbb';
+  ctx.font = '10px Courier New';
+  ctx.fillText(fmtVol(maxV),     w - PAD.right + 4, PAD.top + 3);
+  ctx.fillText(fmtVol(maxV/2),   w - PAD.right + 4, PAD.top + dh/2 + 3);
+
+  candles.forEach((c, i) => {
+    const x  = PAD.left + (i + 0.5) * cw;
+    const bh = (c.v / maxV) * dh;
+    ctx.fillStyle = (c.c >= c.o ? GREEN : RED) + '99';
+    ctx.fillRect(Math.round(x - bw/2), PAD.top + dh - bh, Math.round(bw), bh);
+  });
+}
+
+// ── RSI chart ────────────────────────────────────────────────────
+
+function calcEMA(closes, period) {
+  const k   = 2 / (period + 1);
+  const out  = new Array(closes.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += closes[i];
+  out[period - 1] = sum / period;
+  for (let i = period; i < closes.length; i++)
+    out[i] = closes[i] * k + out[i - 1] * (1 - k);
+  return out;
+}
+
+function calcRSI(closes, p = 14) {
+  const out = new Array(closes.length).fill(null);
+  if (closes.length <= p) return out;
+  let g = 0, l = 0;
+  for (let i = 1; i <= p; i++) {
+    const d = closes[i] - closes[i-1];
+    if (d > 0) g += d; else l -= d;
+  }
+  let ag = g/p, al = l/p;
+  out[p] = 100 - 100/(1 + (al ? ag/al : Infinity));
+  for (let i = p+1; i < closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    ag = (ag*(p-1) + (d > 0 ? d : 0)) / p;
+    al = (al*(p-1) + (d < 0 ? -d : 0)) / p;
+    out[i] = 100 - 100/(1 + (al ? ag/al : Infinity));
+  }
+  return out;
+}
+
+function drawRSI() {
+  const { ctx, w, h } = prepCanvas(rsiCvs);
+  ctx.clearRect(0, 0, w, h);
+  if (!candles.length) return;
+
+  const dw  = w - PAD.left - PAD.right;
+  const dh  = h - PAD.top  - PAD.bottom;
+  const sy  = v => PAD.top + dh - (v/100*dh);
+  const n   = candles.length;
+  const cw  = dw / n;
+  const rsi = calcRSI(candles.map(c => c.c));
+
+  // shaded zones
+  ctx.fillStyle = RED + '18';
+  ctx.fillRect(PAD.left, PAD.top, dw, sy(70) - PAD.top);
+  ctx.fillStyle = GREEN + '18';
+  ctx.fillRect(PAD.left, sy(30), dw, PAD.top + dh - sy(30));
+
+  // reference lines
+  hline(ctx, sy(70), PAD.left, w-PAD.right, '#444', [3,3]);
+  hline(ctx, sy(50), PAD.left, w-PAD.right, '#383838', [3,3]);
+  hline(ctx, sy(30), PAD.left, w-PAD.right, '#444', [3,3]);
+
+  ctx.fillStyle = '#bbb';
+  ctx.font = '10px Courier New';
+  ctx.fillText('70', w-PAD.right+4, sy(70)+3);
+  ctx.fillText('50', w-PAD.right+4, sy(50)+3);
+  ctx.fillText('30', w-PAD.right+4, sy(30)+3);
+
+  // RSI line
+  ctx.strokeStyle = '#b39ddb';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  let started = false;
+  rsi.forEach((r, i) => {
+    if (r === null) return;
+    const x = PAD.left + (i+0.5)*cw;
+    const y = sy(r);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // current value label
+  const last = [...rsi].reverse().find(r => r !== null);
+  if (last != null) {
+    ctx.fillStyle = '#b39ddb';
+    ctx.font = 'bold 11px Courier New';
+    ctx.fillText(last.toFixed(1), w-PAD.right+4, sy(last)+3);
+  }
+}
+
+// ── MACD chart ───────────────────────────────────────────────────
+
+function calcMACD(closes) {
+  const ema12 = calcEMA(closes, 12);
+  const ema26 = calcEMA(closes, 26);
+  const macd  = closes.map((_, i) =>
+    ema12[i] !== null && ema26[i] !== null ? ema12[i] - ema26[i] : null
+  );
+  const signal = new Array(closes.length).fill(null);
+  const k = 2 / 10;
+  let emaVal = null, count = 0, sum = 0;
+  for (let i = 0; i < closes.length; i++) {
+    if (macd[i] === null) continue;
+    if (count < 9) {
+      sum += macd[i]; count++;
+      if (count === 9) { emaVal = sum / 9; signal[i] = emaVal; }
+    } else {
+      emaVal = macd[i] * k + emaVal * (1 - k);
+      signal[i] = emaVal;
+    }
+  }
+  const hist = closes.map((_, i) =>
+    macd[i] !== null && signal[i] !== null ? macd[i] - signal[i] : null
+  );
+  return { macd, signal, hist };
+}
+
+function drawMACD() {
+  const { ctx, w, h } = prepCanvas(macdCvs);
+  ctx.clearRect(0, 0, w, h);
+  if (!candles.length) return;
+
+  const dw = w - PAD.left - PAD.right;
+  const dh = h - PAD.top  - PAD.bottom;
+  const n  = candles.length;
+  const cw = dw / n;
+  const bw = Math.max(1, cw * 0.6);
+
+  const { macd, signal, hist } = calcMACD(candles.map(c => c.c));
+
+  const allVals = [...macd, ...signal, ...hist].filter(v => v !== null);
+  if (!allVals.length) return;
+  const maxV = Math.max(...allVals.map(Math.abs)) || 1;
+  const mid  = PAD.top + dh / 2;
+  const sy   = v => mid - (v / maxV) * (dh / 2);
+
+  // zero line
+  hline(ctx, mid, PAD.left, w - PAD.right, '#333', [3, 3]);
+
+  // histogram
+  hist.forEach((v, i) => {
+    if (v === null) return;
+    const x  = PAD.left + (i + 0.5) * cw;
+    const y0 = mid;
+    const y1 = sy(v);
+    ctx.fillStyle = v >= 0 ? GREEN + '99' : RED + '99';
+    ctx.fillRect(Math.round(x - bw / 2), Math.min(y0, y1), Math.round(bw), Math.max(1, Math.abs(y1 - y0)));
+  });
+
+  // MACD line
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  [[macd, '#64b5f6'], [signal, '#ff7043']].forEach(([series, color]) => {
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    let started = false;
+    series.forEach((v, i) => {
+      if (v === null) return;
+      const x = PAD.left + (i + 0.5) * cw;
+      const y = sy(v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+
+  // right-axis current values
+  ctx.font = '10px Courier New';
+  const lastM = [...macd].reverse().find(v => v !== null);
+  const lastS = [...signal].reverse().find(v => v !== null);
+  if (lastM != null) {
+    ctx.fillStyle = '#64b5f6';
+    ctx.fillText(fmt(lastM), w - PAD.right + 4, sy(lastM) + 3);
+  }
+  if (lastS != null) {
+    ctx.fillStyle = '#ff7043';
+    ctx.fillText(fmt(lastS), w - PAD.right + 4, sy(lastS) + 3);
+  }
+}
+
+// ── Main draw ────────────────────────────────────────────────────
+
+function drawAll() {
+  drawPrice();
+  drawVolume();
+  drawRSI();
+  drawMACD();
+}
+
+window.addEventListener('resize', drawAll);
+
+// ── Crosshair ────────────────────────────────────────────────────
+
+const xhairPriceCvs = document.getElementById('xhairPrice');
+const xhairVolCvs   = document.getElementById('xhairVol');
+const xhairRsiCvs   = document.getElementById('xhairRsi');
+const xhairMacdCvs  = document.getElementById('xhairMacd');
+const pricePanel    = document.getElementById('pricePanel');
+
+function prepXhair(cvs) {
+  const r = window.devicePixelRatio || 1;
+  const w = cvs.parentElement.clientWidth;
+  const h = cvs.parentElement.clientHeight;
+  if (cvs.width !== w * r || cvs.height !== h * r) {
+    cvs.width  = w * r;
+    cvs.height = h * r;
+  }
+  const ctx = cvs.getContext('2d');
+  ctx.setTransform(r, 0, 0, r, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+
+function clearXhairs() {
+  [xhairPriceCvs, xhairVolCvs, xhairRsiCvs, xhairMacdCvs].forEach(cvs => {
+    const ctx = cvs.getContext('2d');
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+  });
+}
+
+function onMouseMove(e) {
+  if (!candles.length) return;
+
+  const rect = pricePanel.getBoundingClientRect();
+  const mx   = e.clientX - rect.left;
+  const my   = e.clientY - rect.top;
+  const pw   = pricePanel.clientWidth;
+  const ph   = pricePanel.clientHeight;
+  const dw   = pw - PAD.left - PAD.right;
+  const dh   = ph - PAD.top  - PAD.bottom;
+
+  if (mx < PAD.left || mx > pw - PAD.right) { clearXhairs(); return; }
+
+  const n   = candles.length;
+  const cw  = dw / n;
+  const idx = Math.max(0, Math.min(n - 1, Math.floor((mx - PAD.left) / cw)));
+  const cx  = PAD.left + (idx + 0.5) * cw;
+  const c   = candles[idx];
+
+  // price at cursor Y
+  const maxP     = Math.max(...candles.map(k => k.h));
+  const minP     = Math.min(...candles.map(k => k.l));
+  const rng      = maxP - minP || 1;
+  const priceAtY = minP + (1 - (my - PAD.top) / dh) * rng;
+
+  // ── price panel overlay
+  const { ctx: pc, w: ppw, h: pph } = prepXhair(xhairPriceCvs);
+  pc.strokeStyle = 'rgba(255,255,255,0.15)';
+  pc.lineWidth   = 1;
+  pc.setLineDash([4, 4]);
+  // vertical
+  pc.beginPath(); pc.moveTo(cx + 0.5, PAD.top); pc.lineTo(cx + 0.5, pph - PAD.bottom); pc.stroke();
+  // horizontal
+  if (my >= PAD.top && my <= pph - PAD.bottom) {
+    pc.beginPath(); pc.moveTo(PAD.left, my + 0.5); pc.lineTo(ppw - PAD.right, my + 0.5); pc.stroke();
+  }
+  pc.setLineDash([]);
+
+  // price label on right axis
+  if (my >= PAD.top && my <= pph - PAD.bottom) {
+    const lblW = 66, lblH = 14;
+    const lx   = ppw - PAD.right + 2;
+    const ly   = my - lblH / 2;
+    pc.fillStyle = 'rgba(255,255,255,0.15)';
+    pc.fillRect(lx, ly, lblW, lblH);
+    pc.fillStyle = '#ddd';
+    pc.font      = '10px Courier New';
+    pc.fillText(fmt(priceAtY), lx + 3, ly + 10);
+  }
+
+  // time label on x axis
+  {
+    const d   = new Date(c.t);
+    const lbl = d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' })
+              + ' ' + d.getHours().toString().padStart(2,'0')
+              + ':' + d.getMinutes().toString().padStart(2,'0');
+    const lblW = lbl.length * 6.5 + 6;
+    const lx   = Math.min(cx - lblW / 2, ppw - PAD.right - lblW);
+    pc.fillStyle = 'rgba(255,255,255,0.12)';
+    pc.fillRect(lx, pph - PAD.bottom + 2, lblW, 14);
+    pc.fillStyle = '#ddd';
+    pc.font      = '10px Courier New';
+    pc.fillText(lbl, lx + 3, pph - PAD.bottom + 12);
+  }
+
+  // ── OHLCV tooltip
+  const bull   = c.c >= c.o;
+  const chgPct = ((c.c - c.o) / c.o * 100).toFixed(2);
+  const lines  = [
+    new Date(c.t).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }),
+    `O  ${fmt(c.o)}`,
+    `H  ${fmt(c.h)}`,
+    `L  ${fmt(c.l)}`,
+    `C  ${fmt(c.c)}`,
+    `V  ${fmtVol(c.v)}`,
+    `   ${bull ? '+' : ''}${chgPct}%`,
+  ];
+  const lh     = 15;
+  const tPad   = 7;
+  const tW     = 148;
+  const tH     = lines.length * lh + tPad * 2;
+  let   tx     = cx + 14;
+  let   ty     = Math.max(PAD.top, my - tH / 2);
+  if (tx + tW > ppw - PAD.right) tx = cx - tW - 14;
+  if (ty + tH > pph - PAD.bottom) ty = pph - PAD.bottom - tH;
+
+  pc.fillStyle   = 'rgba(20,20,20,0.88)';
+  pc.strokeStyle = bull ? GREEN : RED;
+  pc.lineWidth   = 1;
+  pc.setLineDash([]);
+  pc.fillRect(tx, ty, tW, tH);
+  pc.strokeRect(tx + 0.5, ty + 0.5, tW - 1, tH - 1);
+
+  lines.forEach((ln, i) => {
+    if (i === 0) {
+      pc.fillStyle = '#888';
+      pc.font      = '10px Courier New';
+    } else if (i === lines.length - 1) {
+      pc.fillStyle = bull ? GREEN : RED;
+      pc.font      = 'bold 11px Courier New';
+    } else {
+      pc.fillStyle = '#ddd';
+      pc.font      = '11px Courier New';
+    }
+    pc.fillText(ln, tx + tPad, ty + tPad + i * lh + 10);
+  });
+
+  // ── volume, RSI & MACD vertical lines
+  [xhairVolCvs, xhairRsiCvs, xhairMacdCvs].forEach(cvs => {
+    const { ctx, w, h } = prepXhair(cvs);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(cx + 0.5, PAD.top);
+    ctx.lineTo(cx + 0.5, h - PAD.bottom);
+    ctx.stroke();
+  });
+}
+
+pricePanel.addEventListener('mousemove', onMouseMove);
+pricePanel.addEventListener('mouseleave', clearXhairs);
+
+// ── Symbol search ────────────────────────────────────────────────
+
+let allSymbols = [];
+let ddIdx      = -1;
+const dd       = document.getElementById('dropdown');
+
+async function fetchSymbols() {
+  try {
+    const data = await apiFetch(`${API}/ticker/price`);
+    allSymbols = data.map(d => d.symbol).sort();
+  } catch(e) { /* non-fatal */ }
+}
+
+function rankMatches(q) {
+  const starts   = [], contains = [];
+  for (const s of allSymbols) {
+    if (s.startsWith(q))      starts.push(s);
+    else if (s.includes(q))   contains.push(s);
+    if (starts.length + contains.length >= 50) break;
+  }
+  return [...starts, ...contains].slice(0, 20);
+}
+
+function renderDropdown(matches) {
+  dd.innerHTML = '';
+  ddIdx = -1;
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  matches.forEach(sym => {
+    const el = document.createElement('div');
+    el.className   = 'dd-item';
+    el.textContent = sym;
+    el.addEventListener('mousedown', e => { e.preventDefault(); pickSymbol(sym); });
+    dd.appendChild(el);
+  });
+  const r = pairInput.getBoundingClientRect();
+  dd.style.top   = r.bottom + 2 + 'px';
+  dd.style.left  = r.left + 'px';
+  dd.style.width = Math.max(r.width, 160) + 'px';
+  dd.style.display = 'block';
+}
+
+function hideDD() { dd.style.display = 'none'; ddIdx = -1; }
+
+function highlightDD(idx) {
+  const items = dd.querySelectorAll('.dd-item');
+  items.forEach((el, i) => el.classList.toggle('hi', i === idx));
+  if (items[idx]) items[idx].scrollIntoView({ block: 'nearest' });
+}
+
+function pickSymbol(sym) {
+  pairInput.value = sym;
+  currentPair     = sym;
+  hideDD();
+  fetchAndDraw();
+}
+
+pairInput.addEventListener('input', () => {
+  const q = pairInput.value.trim().toUpperCase();
+  if (!q || !allSymbols.length) { hideDD(); return; }
+  renderDropdown(rankMatches(q));
+});
+
+pairInput.addEventListener('keydown', e => {
+  const items = dd.querySelectorAll('.dd-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    ddIdx = Math.min(ddIdx + 1, items.length - 1);
+    highlightDD(ddIdx);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    ddIdx = Math.max(ddIdx - 1, 0);
+    highlightDD(ddIdx);
+  } else if (e.key === 'Enter') {
+    if (ddIdx >= 0 && items[ddIdx]) pickSymbol(items[ddIdx].textContent);
+    else loadPair();
+    hideDD();
+  } else if (e.key === 'Escape') {
+    hideDD();
+  }
+});
+
+pairInput.addEventListener('blur', () => setTimeout(hideDD, 150));
+
+// ── Boot ─────────────────────────────────────────────────────────
+fetchSymbols();
+fetchAndDraw();
+</script>
+</body>
+</html>
