@@ -673,6 +673,9 @@ const xhairVolCvs   = document.getElementById('xhairVol');
 const xhairRsiCvs   = document.getElementById('xhairRsi');
 const xhairMacdCvs  = document.getElementById('xhairMacd');
 const pricePanel    = document.getElementById('pricePanel');
+const volumePanelEl = document.getElementById('volumePanel');
+const rsiPanelEl    = document.getElementById('rsiPanel');
+const macdPanelEl   = document.getElementById('macdPanel');
 
 function prepXhair(cvs) {
   const r = window.devicePixelRatio || 1;
@@ -722,8 +725,8 @@ function onMouseMove(e) {
 
   // ── price panel overlay
   const { ctx: pc, w: ppw, h: pph } = prepXhair(xhairPriceCvs);
-  pc.strokeStyle = 'rgba(255,255,255,0.15)';
-  pc.lineWidth   = 1;
+  pc.strokeStyle = 'rgba(255,255,255,0.85)';
+  pc.lineWidth   = 2;
   pc.setLineDash([4, 4]);
   // vertical
   pc.beginPath(); pc.moveTo(cx + 0.5, PAD.top); pc.lineTo(cx + 0.5, pph - PAD.bottom); pc.stroke();
@@ -738,8 +741,12 @@ function onMouseMove(e) {
     const lblW = 66, lblH = 14;
     const lx   = ppw - PAD.right + 2;
     const ly   = my - lblH / 2;
-    pc.fillStyle = 'rgba(255,255,255,0.15)';
+    pc.setLineDash([]);
+    pc.fillStyle   = '#0d0d0d';
     pc.fillRect(lx, ly, lblW, lblH);
+    pc.strokeStyle = '#555';
+    pc.lineWidth   = 1;
+    pc.strokeRect(lx + 0.5, ly + 0.5, lblW - 1, lblH - 1);
     pc.fillStyle = '#ddd';
     pc.font      = '10px Courier New';
     pc.fillText(fmt(priceAtY), lx + 3, ly + 10);
@@ -753,70 +760,125 @@ function onMouseMove(e) {
               + ':' + d.getMinutes().toString().padStart(2,'0');
     const lblW = lbl.length * 6.5 + 6;
     const lx   = Math.min(cx - lblW / 2, ppw - PAD.right - lblW);
-    pc.fillStyle = 'rgba(255,255,255,0.12)';
-    pc.fillRect(lx, pph - PAD.bottom + 2, lblW, 14);
+    pc.fillStyle = '#0d0d0d';
+    pc.fillRect(lx, pph - PAD.bottom, lblW, PAD.bottom);
+    pc.strokeStyle = '#555';
+    pc.lineWidth   = 1;
+    pc.setLineDash([]);
+    pc.strokeRect(lx + 0.5, pph - PAD.bottom + 0.5, lblW - 1, PAD.bottom - 1);
     pc.fillStyle = '#ddd';
     pc.font      = '10px Courier New';
     pc.fillText(lbl, lx + 3, pph - PAD.bottom + 12);
   }
 
-  // ── OHLCV tooltip
-  const bull   = c.c >= c.o;
-  const chgPct = ((c.c - c.o) / c.o * 100).toFixed(2);
-  const lines  = [
-    new Date(c.t).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }),
-    `O  ${fmt(c.o)}`,
-    `H  ${fmt(c.h)}`,
-    `L  ${fmt(c.l)}`,
-    `C  ${fmt(c.c)}`,
-    `V  ${fmtVol(c.v)}`,
-    `   ${bull ? '+' : ''}${chgPct}%`,
-  ];
-  const lh     = 15;
-  const tPad   = 7;
-  const tW     = 148;
-  const tH     = lines.length * lh + tPad * 2;
-  let   tx     = cx + 14;
-  let   ty     = Math.max(PAD.top, my - tH / 2);
-  if (tx + tW > ppw - PAD.right) tx = cx - tW - 14;
-  if (ty + tH > pph - PAD.bottom) ty = pph - PAD.bottom - tH;
+  // ── OHLCV tooltip (only when cursor is over the price panel)
+  if (my >= PAD.top && my <= pph - PAD.bottom) {
+    const bull   = c.c >= c.o;
+    const chgPct = ((c.c - c.o) / c.o * 100).toFixed(2);
+    const lines  = [
+      new Date(c.t).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }),
+      `O  ${fmt(c.o)}`,
+      `H  ${fmt(c.h)}`,
+      `L  ${fmt(c.l)}`,
+      `C  ${fmt(c.c)}`,
+      `V  ${fmtVol(c.v)}`,
+      `   ${bull ? '+' : ''}${chgPct}%`,
+    ];
+    const lh     = 15;
+    const tPad   = 7;
+    const tW     = 148;
+    const tH     = lines.length * lh + tPad * 2;
+    let   tx     = cx + 14;
+    let   ty     = Math.max(PAD.top, my - tH / 2);
+    if (tx + tW > ppw - PAD.right) tx = cx - tW - 14;
+    if (ty + tH > pph - PAD.bottom) ty = pph - PAD.bottom - tH;
 
-  pc.fillStyle   = 'rgba(20,20,20,0.88)';
-  pc.strokeStyle = bull ? GREEN : RED;
-  pc.lineWidth   = 1;
-  pc.setLineDash([]);
-  pc.fillRect(tx, ty, tW, tH);
-  pc.strokeRect(tx + 0.5, ty + 0.5, tW - 1, tH - 1);
+    pc.fillStyle   = 'rgba(20,20,20,0.88)';
+    pc.strokeStyle = bull ? GREEN : RED;
+    pc.lineWidth   = 1;
+    pc.setLineDash([]);
+    pc.fillRect(tx, ty, tW, tH);
+    pc.strokeRect(tx + 0.5, ty + 0.5, tW - 1, tH - 1);
 
-  lines.forEach((ln, i) => {
-    if (i === 0) {
-      pc.fillStyle = '#888';
-      pc.font      = '10px Courier New';
-    } else if (i === lines.length - 1) {
-      pc.fillStyle = bull ? GREEN : RED;
-      pc.font      = 'bold 11px Courier New';
-    } else {
-      pc.fillStyle = '#ddd';
-      pc.font      = '11px Courier New';
-    }
-    pc.fillText(ln, tx + tPad, ty + tPad + i * lh + 10);
-  });
+    lines.forEach((ln, i) => {
+      if (i === 0) {
+        pc.fillStyle = '#888';
+        pc.font      = '10px Courier New';
+      } else if (i === lines.length - 1) {
+        pc.fillStyle = bull ? GREEN : RED;
+        pc.font      = 'bold 11px Courier New';
+      } else {
+        pc.fillStyle = '#ddd';
+        pc.font      = '11px Courier New';
+      }
+      pc.fillText(ln, tx + tPad, ty + tPad + i * lh + 10);
+    });
+  }
 
-  // ── volume, RSI & MACD vertical lines
-  [xhairVolCvs, xhairRsiCvs, xhairMacdCvs].forEach(cvs => {
+  // ── volume, RSI & MACD vertical + horizontal lines + value labels
+  const maxVol     = Math.max(...candles.map(c => c.v)) || 1;
+  const { macd: md, signal: sg, hist: ht } = calcMACD(candles.map(c => c.c));
+  const macdAllVals = [...md, ...sg, ...ht].filter(v => v !== null);
+  const maxMacdAbs  = macdAllVals.length ? Math.max(...macdAllVals.map(Math.abs)) || 1 : 1;
+
+  [
+    { cvs: xhairVolCvs,  el: volumePanelEl, type: 'vol'  },
+    { cvs: xhairRsiCvs,  el: rsiPanelEl,    type: 'rsi'  },
+    { cvs: xhairMacdCvs, el: macdPanelEl,   type: 'macd' },
+  ].forEach(({ cvs, el, type }) => {
     const { ctx, w, h } = prepXhair(cvs);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth   = 1;
+    const dh = h - PAD.top - PAD.bottom;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth   = 2;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(cx + 0.5, PAD.top);
     ctx.lineTo(cx + 0.5, h - PAD.bottom);
     ctx.stroke();
+
+    const panelRect = el.getBoundingClientRect();
+    if (e.clientY >= panelRect.top && e.clientY <= panelRect.bottom) {
+      const py = e.clientY - panelRect.top;
+      if (py >= PAD.top && py <= h - PAD.bottom) {
+        ctx.beginPath();
+        ctx.moveTo(PAD.left, py + 0.5);
+        ctx.lineTo(w - PAD.right, py + 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        let txt;
+        if (type === 'vol') {
+          txt = fmtVol(Math.max(0, maxVol * (1 - (py - PAD.top) / dh)));
+        } else if (type === 'rsi') {
+          txt = (100 * (1 - (py - PAD.top) / dh)).toFixed(1);
+        } else {
+          const mid = PAD.top + dh / 2;
+          txt = fmt((mid - py) / (dh / 2) * maxMacdAbs);
+        }
+
+        const lblW = 66, lblH = 14;
+        const lx   = w - PAD.right + 2;
+        const ly   = py - lblH / 2;
+        ctx.fillStyle   = '#0d0d0d';
+        ctx.fillRect(lx, ly, lblW, lblH);
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(lx + 0.5, ly + 0.5, lblW - 1, lblH - 1);
+        ctx.fillStyle = '#ddd';
+        ctx.font      = '10px Courier New';
+        ctx.fillText(txt, lx + 3, ly + 10);
+      } else {
+        ctx.setLineDash([]);
+      }
+    } else {
+      ctx.setLineDash([]);
+    }
   });
 }
 
-pricePanel.addEventListener('mousemove', onMouseMove);
-pricePanel.addEventListener('mouseleave', clearXhairs);
+document.getElementById('chartWrap').addEventListener('mousemove', onMouseMove);
+document.getElementById('chartWrap').addEventListener('mouseleave', clearXhairs);
 
 // ── Symbol search ────────────────────────────────────────────────
 
