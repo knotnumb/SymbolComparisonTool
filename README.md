@@ -1,7 +1,5 @@
 # Candlestick Chart Tool
 
-[![Hits](https://hits.sh/github.com/knotnumb/SymbolComparisonTool.svg)](https://hits.sh/github.com/knotnumb/SymbolComparisonTool/)
-
 A dark-themed trading terminal built in vanilla JavaScript — no frameworks, no dependencies, just a single `index.html` you can open in any browser.
 
 ![Candlestick chart tool showing SUIBTC on the 1h timeframe with EMA overlays, volume, RSI, and MACD panels](screenshot.png)
@@ -45,6 +43,8 @@ Or just download `index.html` and open it directly.
 ## Aesthetic
 
 Terminal green/red (`#26a69a` / `#ef5350`), monospace font, `#0d0d0d` background. No UI libraries.
+
+[![Hits](https://hits.sh/github.com/knotnumb/SymbolComparisonTool.svg)](https://hits.sh/github.com/knotnumb/SymbolComparisonTool/)
 
 ## License
 
