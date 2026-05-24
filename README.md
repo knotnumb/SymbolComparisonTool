@@ -1,4 +1,5 @@
 # Candlestick Chart Tool
+[![Hits](https://hits.sh/github.com/knotnumb/SymbolComparisonTool.svg)](https://hits.sh/github.com/knotnumb/SymbolComp  arisonTool/)
 
 A dark-themed trading terminal built in vanilla JavaScript — no frameworks, no dependencies, just a single `index.html` you can open in any browser.
 
